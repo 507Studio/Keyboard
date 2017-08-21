@@ -862,7 +862,7 @@ http://www.opensource.org/licenses/mit-license.php
 				base.last.val = base.$preview.val();
 
 				// don't alter "e" or the "keyup" event never finishes processing; fixes #552
-				var event = jQuery.Event( $keyboard.events.kbChange );
+				var event = $.Event( $keyboard.events.kbChange );
 				// base.last.key may be empty string (shift, enter, tab, etc) when keyboard is first visible
 				// use e.key instead, if browser supports it
 				event.action = base.last.key;
