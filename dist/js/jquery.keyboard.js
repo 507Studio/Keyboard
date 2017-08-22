@@ -219,14 +219,16 @@ http://www.opensource.org/licenses/mit-license.php
 		var $toggle = base.$keyboard.find('.' + $keyboard.css.keyToggle),
 			locked = !base.enabled;
 		// prevent physical keyboard from working
-		base.$preview.prop('readonly', locked || base.options.lockInput);
+		base.preview.readonly = locked || base.options.lockInput;
 		// disable all buttons
 		base.$keyboard
 			.toggleClass($keyboard.css.keyDisabled, locked)
 			.find('.' + $keyboard.css.keyButton)
 			.not($toggle)
-			.prop('disabled', locked)
-			.attr('aria-disabled', locked);
+			.attr('aria-disabled', locked)
+			.each(function() {
+				this.disabled = locked;
+			});
 		$toggle.toggleClass($keyboard.css.keyDisabled, locked);
 		// stop auto typing
 		if (locked && base.typing_options) {
@@ -860,7 +862,7 @@ http://www.opensource.org/licenses/mit-license.php
 				base.last.val = base.$preview.val();
 
 				// don't alter "e" or the "keyup" event never finishes processing; fixes #552
-				var event = jQuery.Event( $keyboard.events.kbChange );
+				var event = $.Event( $keyboard.events.kbChange );
 				// base.last.key may be empty string (shift, enter, tab, etc) when keyboard is first visible
 				// use e.key instead, if browser supports it
 				event.action = base.last.key;
