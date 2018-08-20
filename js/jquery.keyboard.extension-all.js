@@ -4,13 +4,15 @@
 ██  ██ ██  ██   ██  ██ ██  ██   ██     ██ ██ ██ ██  ██ ██  ██ ██ ██▀▀   ▀▀▀▀██
 █████▀ ▀████▀   ██  ██ ▀████▀   ██     ██ ██ ██ ▀████▀ █████▀ ██ ██     █████▀
 */
-/*! jQuery UI Virtual Keyboard (1.26.26-1) - ALL Extensions + Mousewheel */
-/*! jQuery UI Virtual Keyboard Alt Key Popup v1.1.4 *//*
- * for Keyboard v1.18+ only (4/28/2017)
+/*! jQuery UI Virtual Keyboard (1.28.5) - ALL Extensions + Mousewheel */
+/*! jQuery UI Virtual Keyboard Alt Key Popup v2.0.0 *//*
+ * for Keyboard v1.18+ only (2018-04-19)
  *
  * By Rob Garrison (aka Mottie)
  * Licensed under the MIT License
  *
+ * Note: Use of `event.key` requires a modern browser
+ * (https://caniuse.com/#feat=keyboardevent-key)
 */
 /* jshint browser:true, jquery:true, unused:false */
 /* global require:false, define:false, module:false */
@@ -31,8 +33,9 @@
 	var $keyboard = $.keyboard;
 
 	$.extend( $keyboard.css, {
-		altKeyPopup   : 'ui-keyboard-popup',
-		altKeyOverlay : 'ui-keyboard-overlay'
+		altKeyPopup     : 'ui-keyboard-popup',
+		altKeyOverlay   : 'ui-keyboard-overlay',
+		altKeyPopupOpen : 'ui-keyboard-popup-open'
 	});
 
 	$keyboard.altKeys = $.extend({
@@ -83,16 +86,6 @@
 		')' : '\u300b \u3011 \u3015'  // » 】 〕
 	}, $keyboard.altKeys );
 
-	// physical keyboard navigation inside popup
-	$keyboard.navigationKeys = $.extend({
-		enter      : 13,
-		escape     : 27,
-		end        : 35,
-		home       : 36,
-		left       : 37,
-		right      : 39,
-	}, $keyboard.navigationKeys );
-
 	$.fn.addAltKeyPopup = function( options ) {
 		//Set the default values, use comma to separate the settings, example:
 		var defaults = {
@@ -137,9 +130,9 @@
 				base.options.repeatRate = 0;
 
 				// add hold key functionality for popups
-				base.$allKeys
-					.unbind( base.altkeypopup_namespace )
-					.bind( start, function() {
+				base
+					.unbindButton( base.altkeypopup_namespace )
+					.bindButton( start, function() {
 						clearTimeout( timer );
 						var $key = $( this ),
 							key = $key.attr( 'data-value' ) || '',
@@ -155,7 +148,7 @@
 							}
 						}
 					})
-					.bind( end, function() {
+					.bindButton( end, function() {
 						clearTimeout( timer );
 					});
 
@@ -171,56 +164,61 @@
 						'keypress keydown keyup '
 							.split( ' ' )
 							.join( base.altkeypopup_namespace + ' ' ),
-							function( event ) {
-								if ( event.type === 'keyup' ) {
-									clearTimeout( timer );
-									base.altkeypopup_blockingFlag = false;
-									return event.which !== $keyboard.navigationKeys.escape;
-								}
-								var tmp,
-									layout = $keyboard.builtLayouts[ base.layout ],
-									keyCodes = $keyboard.keyCodes,
-									$key = $( event.target ),
-									k = event.charCode || event.which,
-									key = String.fromCharCode( k );
-
-								if ( event.type === 'keydown' && key in $keyboard.altKeys ) {
-									tmp = base.altkeypopup_blockingFlag;
-									base.altkeypopup_blockingFlag = true;
-									// return true on initial keydown or keypress never fires
-									// then return false to prevent repeat key
-									return !tmp;
-								} else if ( base.altkeypopup_blockingFlag ) {
-									if (
-										( k >= keyCodes.a && k <= keyCodes.z ) &&
-										!event.shiftKey
-									) {
-										key = key.toLowerCase();
-									}
-									// find mapped key, if any
-									if (
-										layout.hasMappedKeys &&
-										layout.mappedKeys.hasOwnProperty( key )
-									) {
-										key = layout.mappedKeys[ key ];
-									}
-									if ( key in $keyboard.altKeys ) {
-										timer = setTimeout( function(){
-											if ( base.altkeypopup_blockingFlag ) {
-												base.altKeyPopup_popup( key, $key );
-											}
-										}, base.altkeypopup_options.holdTime );
-									}
-									return true;
-								}
+						function( event ) {
+							if ( event.type === 'keyup' ) {
+								clearTimeout( timer );
+								base.altkeypopup_blockingFlag = false;
+								return event.key !== 'Escape';
 							}
+							var layout = $keyboard.builtLayouts[ base.layout ],
+								$key = $( event.target ),
+								origKey = event.key,
+								key = event.key;
+
+							if ( event.type === 'keydown' && key in $keyboard.altKeys ) {
+								// Compare typed key to prevent blocking issues reported in #664
+								if ( base.altkeypopup_blockingFlag === origKey ) {
+									return false;
+								}
+								base.altkeypopup_blockingFlag = origKey;
+								// return true on initial keydown or keypress never fires
+								// then return false to prevent repeat key
+								return true;
+							}
+							if ( base.altkeypopup_blockingFlag ) {
+								// find mapped key, if any
+								if (
+									layout.hasMappedKeys &&
+									layout.mappedKeys.hasOwnProperty( key )
+								) {
+									key = layout.mappedKeys[ key ];
+								}
+								if ( key in $keyboard.altKeys ) {
+									clearTimeout( timer );
+									timer = setTimeout( function() {
+										if ( base.altkeypopup_blockingFlag === origKey ) {
+											base.altKeyPopup_popup( key, $key );
+										}
+									}, base.altkeypopup_options.holdTime );
+								}
+								return true;
+							}
+						}
 					);
 			};
 
 			base.altKeyPopup_close = function() {
 				base.altkeypopup_blockingFlag = false;
 				base.altKeyPopup_$overlay = null;
-				base.$keyboard.find( '.' + $keyboard.css.altKeyOverlay ).remove();
+				setTimeout(function() {
+					if (base.$keyboard.length) {
+						base.$keyboard.removeClass($keyboard.css.altKeyPopupOpen);
+						var $el = base.$keyboard.find( '.' + $keyboard.css.altKeyOverlay );
+						if ($el) {
+							$el.remove();
+						}
+					}
+				}, 1);
 				$( document ).unbind( base.altkeypopup_namespace );
 				base.$preview.focus();
 				// restore ignoreEsc option
@@ -256,6 +254,7 @@
 				evts = 'inactive hidden '
 					.split( ' ' )
 					.join( base.altkeypopup_namespace + ' ' );
+				base.$keyboard.addClass($keyboard.css.altKeyPopupOpen);
 				base.$el.unbind( evts ).bind( evts, function() {
 					base.altKeyPopup_close();
 				});
@@ -278,17 +277,8 @@
 				$keys = $container
 					.appendTo( base.altKeyPopup_$overlay )
 					.children()
-					.bind( 'mousedown touchstart', function( event ) {
-						var action = $( this ).attr( 'data-action' );
-						// make action keys work in popup
-						if (
-							action in $keyboard.keyaction &&
-							$.isFunction($keyboard.keyaction[ action ] )
-						) {
-							$keyboard.keyaction[ action ]( base, this, event );
-						} else {
-							base.insertText( action );
-						}
+					.bind( 'mousedown touchstart', function() {
+						// action/value now processed by core functions
 						base.altKeyPopup_close();
 					})
 					.bind( 'mouseover mouseleave', function( event ){
@@ -306,12 +296,12 @@
 				base.options.ignoreEsc = true;
 				$( document )
 					.unbind( base.altkeypopup_namespace )
-					.bind( 'keydown' + base.altkeypopup_namespace, function( event ) {
+					.bind( 'keydown' + base.altkeypopup_namespace, function() {
 						// keep home & end from scrolling the page
 						return false;
 					})
 					.bind( 'keyup' + base.altkeypopup_namespace, function( event ) {
-						if ( event.which === $keyboard.navigationKeys.escape ) {
+						if ( event.key === 'Escape' ) {
 							event.which = 0; // prevent escClose from closing the keyboard
 							base.altKeyPopup_close();
 						} else {
@@ -360,7 +350,7 @@
 				});
 
 				// adjust position as needed using popupPosition callback function
-				if ( typeof base.altkeypopup_options.popupPosition === "function" ) {
+				if ( typeof base.altkeypopup_options.popupPosition === 'function' ) {
 					base.altkeypopup_options.popupPosition(base, data);
 				}
 
@@ -386,17 +376,17 @@
 				}
 
 				indx = base.altKeyPopup_currentIndex;
-				if ( event.which === k.enter ) {
+				if ( event.key === 'Enter' ) {
 					base.insertText( $keys.eq( indx ).attr( 'data-value' ) );
 					base.altKeyPopup_close();
 					return true;
 				}
 
-				switch( event.which ) {
-					case k.end   : indx = max; break; // End
-					case k.home  : indx = 0; break; // Home
-					case k.left  : indx -= 1; break; // Left
-					case k.right : indx += 1; break; // Right
+				switch( event.key ) {
+					case 'End': indx = max; break;
+					case 'Home': indx = 0; break;
+					case 'ArrowLeft': indx -= 1; break;
+					case 'ArrowRight': indx += 1; break;
 				}
 				if ( indx < 0 ) { indx = 0; }
 				if ( indx > max ) { indx = max; }
@@ -428,8 +418,8 @@
 
 }));
 
-/*! jQuery UI Virtual Keyboard Autocomplete v1.11.3 *//*
- * for Keyboard v1.18+ only (3/29/2017)
+/*! jQuery UI Virtual Keyboard Autocomplete v1.11.4 *//*
+ * for Keyboard v1.18+ only (2018-01-10)
  *
  * By Rob Garrison (Mottie)
  * Licensed under the MIT License
@@ -609,8 +599,10 @@ $.fn.addAutocomplete = function(options) {
 								if (key === 'enter') {
 									// update preview with the selected item
 									setTimeout(function(){
-										base.$preview.val(base.$autocomplete.selectedItem.value);
-										base.$preview.focus();
+										if (base.$autocomplete) {
+											base.$preview.val(base.$autocomplete.selectedItem.value);
+											base.$preview.focus();
+										}
 									}, 100);
 								}
 							}
@@ -623,22 +615,31 @@ $.fn.addAutocomplete = function(options) {
 				var events = 'mouseup mousedown mouseleave touchstart touchend touchcancel '
 					.split(' ')
 					.join(namespace + ' ');
-				base.$allKeys.bind(events, function(event) {
+				base.bindButton(events, function(event) {
 					base.autocomplete_update(event);
 				});
 			}
+			if (!base.escCloseCallback.autocomplete) {
+				base.escCloseCallback.autocomplete = base.checkAutocompleteMenu;
+			}
 		};
 
-		base.origEscClose = base.escClose;
-
-		// replace original function with this one
-		base.escClose = function(e) {
+		base.checkAutocompleteMenu = function($target) {
 			// prevent selecting an item in autocomplete from closing keyboard
-			if ( base.hasAutocomplete && (
-				e.target.id === 'ui-active-menuitem' ||
-				$(e.target).closest('ul').hasClass('ui-autocomplete'))
-			) { return; }
-			base.origEscClose(e);
+			// return a "shouldStayOpen" boolean state for this extension
+			return base.hasAutocomplete &&
+				$target.closest('ul').hasClass('ui-autocomplete');
+		};
+
+		base.autocomplete_destroy = function() {
+			clearTimeout(base.$autocomplete.searching);
+			base.hasAutocomplete = false;
+			base.$el.unbind(namespace);
+			if (base.$preview) {
+				base.$preview.unbind(namespace);
+				base.unbindButton(namespace);
+			}
+			delete base.$autocomplete;
 		};
 
 		base.autocomplete_init();
@@ -891,7 +892,7 @@ $.fn.addAutocomplete = function(options) {
 	};
 
 	// add {extender} keyaction
-	$keyboard.keyaction.extender = function( base, el ) {
+	$keyboard.keyaction.extender = function( base ) {
 		base.extender_toggle();
 		return false;
 	};
@@ -1189,8 +1190,8 @@ $.fn.addMobile = function(options){
 			// Using this instead of the jQuery Mobile buttonMarkup because it is expecting <a>'s instead of <button>
 			// theme:'a', shadow:'true', inline:'true', corners:'false'
 			return css + ' ' + (btn && btn.cssClass ? btn.cssClass + '-' + (t.theme || '') : '') +
-				(t.shadow == 'true' ? ' ui-shadow' : '') +
-				(t.corners == 'true' ? ' ui-corner-all' : '');
+				(t.shadow == 'true' ? ' ui-shadow' : '') + // eslint-disable-line eqeqeq
+				(t.corners == 'true' ? ' ui-corner-all' : ''); // eslint-disable-line eqeqeq
 		};
 
 		base.mobile_init();
@@ -1292,7 +1293,7 @@ $.fn.addNavigation = function(options){
 
 		// save navigation settings - disabled when the toggled
 		base.saveNav = [ base.options.tabNavigation, base.options.enterNavigation ];
-		base.allNavKeys = $.map(k, function(v,i){ return v; });
+		base.allNavKeys = $.map(k, function(v){ return v; });
 
 		// Setup
 		base.navigation_init = function(){
@@ -1310,7 +1311,7 @@ $.fn.addNavigation = function(options){
 		};
 
 		base.checkKeys = function(key, disable){
-			if (typeof(key) === "undefined") {
+			if (typeof(key) === 'undefined') {
 				return;
 			}
 			var k = base.navigation_keys;
@@ -1541,8 +1542,8 @@ $.fn.previewKeyset = function( options ) {
 
 }));
 
-/*! jQuery UI Virtual Keyboard Scramble Extension v1.7.0 *//*
- * for Keyboard v1.18+ (updated 3/15/2017)
+/*! jQuery UI Virtual Keyboard Scramble Extension v1.7.1 *//*
+ * for Keyboard v1.18+ (updated 2018-07-05)
  *
  * By Rob Garrison (aka Mottie)
  * Licensed under the MIT License
@@ -1681,6 +1682,20 @@ $.keyboard = $.keyboard || {};
 				}
 			};
 
+			// get a random uint from 0 ... max-1
+			base.getRandomUInt = function(max) {
+
+				var cryptoObj = window.crypto || window.msCrypto;
+
+				if (cryptoObj !== undefined) {
+					var random_array = new Uint32Array(1);
+					cryptoObj.getRandomValues(random_array);
+					return random_array[0] % max;
+				}
+				// fallback
+				return Math.floor(Math.random() * max);
+			};
+
 			// modified from Fisher-Yates shuffle ( http://bost.ocks.org/mike/shuffle/ )
 			// to allow not shuffling specifically mapped array elements
 			base.shuffle = function(array, map) {
@@ -1689,7 +1704,7 @@ $.keyboard = $.keyboard || {};
 				// While there remain elements to shuffle...
 				while (index > 0) {
 					// Pick a remaining element...
-					random = Math.floor(Math.random() * index);
+					random = base.getRandomUInt(index);
 					if (map[index - 1] === false) {
 						index--;
 					}
@@ -1935,9 +1950,9 @@ $.keyboard = $.keyboard || {};
 					.bind( events, function() {
 						base.typing_reset();
 					});
-				base.$allKeys
-					.unbind( namespace )
-					.bind( 'mousedown' + namespace, function() {
+				base
+					.unbindButton( namespace )
+					.bindButton( 'mousedown' + namespace, function() {
 						base.typing_reset();
 					});
 			};
